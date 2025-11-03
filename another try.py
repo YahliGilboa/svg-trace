@@ -1,61 +1,85 @@
-import cv2
+import subprocess
+import tempfile
+import time
+
+import numpy
 import numpy as np
-import svgwrite
+from PIL import Image, ImageFile
+from skimage import color
+from skimage.filters import median
+from skimage.morphology import disk
 from sklearn.cluster import KMeans
-from scipy.spatial import ConvexHull
+import os
+
+import svgutils.transform as sg
 
 
-def png_to_colored_svg(input_png_path, output_svg_path, n_colors=5):
-    """
-    Converts a PNG to a multi-color SVG using k-means clustering.
+# 2 approaches here-
+# 1. use a color tolerance and select everything in that color tolerance and include it in mask
+# 2. calculate what primary color each pixel is closest to, and color the pixel to be that primary color. create a mask from it
+# method NO#1 is simpler, but if no color falls into this tolerance what will happen?
+# therefore ill be using method NO 2
 
-    Args:
-        input_png_path (str): Path to input PNG
-        output_svg_path (str): Path to save output SVG
-        n_colors (int): Number of dominant colors to trace
-    """
-    # Load image
-    img = cv2.imread(input_png_path, cv2.IMREAD_UNCHANGED)
-    if img.shape[2] == 4:
-        # Remove alpha channel for clustering
-        img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    h, w, c = img.shape
+# COLOR_TOLERANCE = 30
 
-    # Flatten pixels for k-means
-    pixels = img.reshape(-1, 3)
+def main():
+    img: ImageFile = Image.open("photos/logo.png").convert("RGB")  # Load image
+    img_as_np_array = np.array(img)
 
-    # Cluster colors
-    kmeans = KMeans(n_clusters=n_colors, random_state=0).fit(pixels)
-    labels = kmeans.labels_
-    colors = kmeans.cluster_centers_.astype(int)
+    flattened_img = np.array(img_as_np_array).reshape(-1, 3)  # gets only LAB of image as flat array
 
-    # Prepare SVG
-    dwg = svgwrite.Drawing(output_svg_path, size=(w, h))
+    default_palette = calculate_main_image_colors(flattened_img, colors_n=2)
 
-    for i, color in enumerate(colors):
-        mask = labels.reshape(h, w) == i
-        ys, xs = np.where(mask)
-        points = list(zip(xs, ys))
-        if len(points) < 3:
-            continue
+    # here get additional colors from user and append them
+    additional_palette = np.empty(shape=(0, 3), dtype=int)
+    additional_palette = np.append(additional_palette, [[254, 216, 107], [122, 54, 15], [75, 22, 16]], axis=0)
+    primary_color_palette = np.append(default_palette, additional_palette, axis=0)
+    print("Main colors (RGB):", primary_color_palette)
 
-        # Convex hull to get polygon per color
-        hull = ConvexHull(points)
-        polygon = [(int(points[v][0]), int(points[v][1])) for v in hull.vertices]
+    image_coupled_with_primary_colors = img_as_np_array[:, :, np.newaxis, :] - primary_color_palette[np.newaxis,
+                                                                               np.newaxis, :, :]
+    diffs = np.sqrt(np.sum(np.square(image_coupled_with_primary_colors), axis=3))
+    min_diffs = np.argmin(diffs, axis=2)
 
-        # Add polygon with proper RGB integers
-        dwg.add(
-            dwg.polygon(
-                polygon,
-                fill=svgwrite.rgb(int(color[0]), int(color[1]), int(color[2])),
-                stroke='none'
-            )
-        )
+    with tempfile.TemporaryDirectory() as d:
+        fig = sg.SVGFigure("100cm", "100cm")
 
-    dwg.save()
-    print(f"✅ Colored SVG saved: {output_svg_path}")
+        for i in range(len(primary_color_palette)):
+            mask = (min_diffs == i).astype(np.uint8) * 255
+            mask = median(mask, disk(3))
+
+            temp_folder_file_no_extension = os.path.join(d,str(i))
+            Image.fromarray(mask).save(f"{temp_folder_file_no_extension}.bmp")
+
+            subprocess.run(["potrace", f"{temp_folder_file_no_extension}.bmp", "-s", "-o", f"{temp_folder_file_no_extension}.svg"])
+            root = sg.fromfile(f"{temp_folder_file_no_extension}.svg").getroot()
+
+            fig.append([root])
+
+        fig.save('broski.svg')
+        # background = sg.fromfile(os.path.join(d,f'{0}.svg'))
+        #
+        # for i in range(1, len(primary_color_palette)):
+
+        #     background.append(svg)
+        #
+        # background.save('broski.svg')
 
 
-# Example usage
-png_to_colored_svg("logo.png", "output.svg", n_colors=6)
+
+
+def get_color_mask_from_img(img: list[numpy.ndarray], mask_color_lab: numpy.ndarray) -> list[numpy.ndarray]:
+    '''this function takes in an image and the color pallete and returns all masks (images of colors) as a tuple'''
+
+    pass
+
+
+def calculate_main_image_colors(img_colors_rgb, colors_n=2):
+    # model to cluster
+    kmeans = KMeans(n_clusters=colors_n).fit(img_colors_rgb)
+
+    # round results into int and return
+    return np.round(kmeans.cluster_centers_).astype(int)
+
+
+main()
