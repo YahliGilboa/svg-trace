@@ -1,17 +1,14 @@
+import os
 import subprocess
 import tempfile
-import time
 
 import numpy
 import numpy as np
+import svgutils.transform as sg
 from PIL import Image, ImageFile
-from skimage import color
 from skimage.filters import median
 from skimage.morphology import disk
 from sklearn.cluster import KMeans
-import os
-
-import svgutils.transform as sg
 
 
 # 2 approaches here-
@@ -42,30 +39,41 @@ def main():
     min_diffs = np.argmin(diffs, axis=2)
 
     with tempfile.TemporaryDirectory() as d:
-        fig = sg.SVGFigure("100cm", "100cm")
 
+        figs = []
         for i in range(len(primary_color_palette)):
+            # for i in range(1):
             mask = (min_diffs == i).astype(np.uint8) * 255
             mask = median(mask, disk(3))
 
-            temp_folder_file_no_extension = os.path.join(d,str(i))
-            Image.fromarray(mask).save(f"{temp_folder_file_no_extension}.bmp")
+            temp_folder_file_path = os.path.join(d, str(i))
+            # print(temp_folder_file_path)
+            Image.fromarray(mask).save(f"{temp_folder_file_path}.bmp")
 
-            subprocess.run(["potrace", f"{temp_folder_file_no_extension}.bmp", "-s", "-o", f"{temp_folder_file_no_extension}.svg"])
-            root = sg.fromfile(f"{temp_folder_file_no_extension}.svg").getroot()
+            print(f"{temp_folder_file_path}.svg")
+            subprocess.run(["potrace", f"{temp_folder_file_path}.bmp", "-s", "-o", f"{temp_folder_file_path}.svg"])
+            subprocess.run(["potrace", f"{temp_folder_file_path}.bmp", "-s", "-o", f"bro1.svg"])
+            fig = sg.fromfile(f"{temp_folder_file_path}.svg")
 
-            fig.append([root])
+            figs.append(fig)
 
-        fig.save('broski.svg')
-        # background = sg.fromfile(os.path.join(d,f'{0}.svg'))
-        #
-        # for i in range(1, len(primary_color_palette)):
+        # Base figure
+        root_fig = figs[0]
+        root_fig_root = root_fig.getroot()
 
-        #     background.append(svg)
-        #
-        # background.save('broski.svg')
+        # All subsequent layers
+        for fig in figs[1:]:
+            r = fig.getroot()
 
+            # Fit same size, same origin
+            r.moveto(0, 0, scale_x=1, scale_y=1)
 
+            # Append to root of final SVG
+            root_fig.append([r])
+
+        root_fig.save('broski.svg')
+
+#         BROOOOOO USE SVG STAXK INSTEAD
 
 
 def get_color_mask_from_img(img: list[numpy.ndarray], mask_color_lab: numpy.ndarray) -> list[numpy.ndarray]:
