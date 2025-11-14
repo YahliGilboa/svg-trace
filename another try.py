@@ -9,7 +9,7 @@ from PIL import Image, ImageFile
 from skimage.filters import median
 from skimage.morphology import disk
 from sklearn.cluster import KMeans
-
+import svg_stack as ss
 
 # 2 approaches here-
 # 1. use a color tolerance and select everything in that color tolerance and include it in mask
@@ -40,7 +40,9 @@ def main():
 
     with tempfile.TemporaryDirectory() as d:
 
-        figs = []
+        # TODO: consider coloring the figures for bettesr 3d model creation in 3mf, so maybe create figs here already
+        # https: // stackoverflow.com / questions / 3380726 / converting - an - rgb - color - tuple - to - a - hexidecimal - string
+        file_paths = []
         for i in range(len(primary_color_palette)):
             # for i in range(1):
             mask = (min_diffs == i).astype(np.uint8) * 255
@@ -52,28 +54,22 @@ def main():
 
             print(f"{temp_folder_file_path}.svg")
             subprocess.run(["potrace", f"{temp_folder_file_path}.bmp", "-s", "-o", f"{temp_folder_file_path}.svg"])
-            subprocess.run(["potrace", f"{temp_folder_file_path}.bmp", "-s", "-o", f"bro1.svg"])
-            fig = sg.fromfile(f"{temp_folder_file_path}.svg")
+            subprocess.run(["potrace", f"{temp_folder_file_path}.bmp", "-s", "-o", f"bro{i}.svg"])
 
-            figs.append(fig)
+            file_paths.append(f"{temp_folder_file_path}.svg")
 
-        # Base figure
-        root_fig = figs[0]
-        root_fig_root = root_fig.getroot()
+        # assuming 0 is the background- elaborate in next comment
+        base_figure = sg.fromfile(os.path.join(d, '1.svg'))
+        figs = [sg.fromfile(file_path) for file_path in file_paths]
+        # the [2:] is an attempt to get rid of the trace of the background color; maybe there is a better way to do it
+        # like letting the user select what it is, for now ill assume its the dominant color
+        plots = [fig.getroot() for fig in figs[2:]]
 
-        # All subsequent layers
-        for fig in figs[1:]:
-            r = fig.getroot()
+        base_figure.append(plots)
+        base_figure.save("readied_svg.svg")
 
-            # Fit same size, same origin
-            r.moveto(0, 0, scale_x=1, scale_y=1)
 
-            # Append to root of final SVG
-            root_fig.append([r])
 
-        root_fig.save('broski.svg')
-
-#         BROOOOOO USE SVG STAXK INSTEAD
 
 
 def get_color_mask_from_img(img: list[numpy.ndarray], mask_color_lab: numpy.ndarray) -> list[numpy.ndarray]:
