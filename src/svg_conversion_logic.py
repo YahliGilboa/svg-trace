@@ -9,7 +9,6 @@ from PIL import Image, ImageFile
 from skimage.filters import median
 from skimage.morphology import disk
 from sklearn.cluster import KMeans
-import svg_stack as ss
 
 # 2 approaches here-
 # 1. use a color tolerance and select everything in that color tolerance and include it in mask
@@ -17,10 +16,11 @@ import svg_stack as ss
 # method NO#1 is simpler, but if no color falls into this tolerance what will happen?
 # therefore ill be using method NO 2
 
-# COLOR_TOLERANCE = 30
+ORIGINAL_COLOR_OF_SVG = "#000000"
 
-def main():
-    img: ImageFile = Image.open("photos/logo.png").convert("RGB")  # Load image
+
+def main(img:ImageFile,trace_colors:list[]):
+    img: ImageFile = Image.open("photos/only birb.png").convert("RGB")  # Load image
     img_as_np_array = np.array(img)
 
     flattened_img = np.array(img_as_np_array).reshape(-1, 3)  # gets only LAB of image as flat array
@@ -28,9 +28,10 @@ def main():
     default_palette = calculate_main_image_colors(flattened_img, colors_n=2)
 
     # here get additional colors from user and append them
-    additional_palette = np.empty(shape=(0, 3), dtype=int)
-    additional_palette = np.append(additional_palette, [[254, 216, 107], [122, 54, 15], [75, 22, 16]], axis=0)
-    primary_color_palette = np.append(default_palette, additional_palette, axis=0)
+    # additional_palette = np.empty(shape=(0, 3), dtype=int)
+    # additional_palette = np.append(additional_palette, [[254, 216, 107], [122, 54, 15], [75, 22, 16]], axis=0)
+    # primary_color_palette = np.append(default_palette, additional_palette, axis=0)
+    primary_color_palette= default_palette
     print("Main colors (RGB):", primary_color_palette)
 
     image_coupled_with_primary_colors = img_as_np_array[:, :, np.newaxis, :] - primary_color_palette[np.newaxis,
@@ -38,11 +39,15 @@ def main():
     diffs = np.sqrt(np.sum(np.square(image_coupled_with_primary_colors), axis=3))
     min_diffs = np.argmin(diffs, axis=2)
 
-    with tempfile.TemporaryDirectory() as d:
+    # TODO: code for selecting backround color
+    background_color = np.array([2, 1, 0])
+    idx_of_bg_color = np.where(primary_color_palette == background_color)[0][0]
+    print("yay", idx_of_bg_color)
 
+    with tempfile.TemporaryDirectory() as d:
         # TODO: consider coloring the figures for bettesr 3d model creation in 3mf, so maybe create figs here already
         # https: // stackoverflow.com / questions / 3380726 / converting - an - rgb - color - tuple - to - a - hexidecimal - string
-        file_paths = []
+        figs = []
         for i in range(len(primary_color_palette)):
             # for i in range(1):
             mask = (min_diffs == i).astype(np.uint8) * 255
@@ -53,23 +58,32 @@ def main():
             Image.fromarray(mask).save(f"{temp_folder_file_path}.bmp")
 
             print(f"{temp_folder_file_path}.svg")
-            subprocess.run(["potrace", f"{temp_folder_file_path}.bmp", "-s", "-o", f"{temp_folder_file_path}.svg"])
-            subprocess.run(["potrace", f"{temp_folder_file_path}.bmp", "-s", "-o", f"bro{i}.svg"])
+            subprocess.run(
+                ["potrace", f"{temp_folder_file_path}.bmp", "-s", "-i", "-o", f"{temp_folder_file_path}.svg"])
+            subprocess.run(["potrace", f"{temp_folder_file_path}.bmp", "-s", "-i", "-o", f"bro{i}.svg"])
 
-            file_paths.append(f"{temp_folder_file_path}.svg")
+            with open(f"{temp_folder_file_path}.svg", 'r') as f:
+                content = f.read()
 
+            content = content.replace(ORIGINAL_COLOR_OF_SVG, "#%02x%02x%02x" % tuple(primary_color_palette[i]))
+            print(primary_color_palette[i])
+
+            with open(f"{temp_folder_file_path}.svg", 'w') as f:
+                f.write(content)
+
+            fig = sg.fromfile(os.path.join(d, f"{temp_folder_file_path}.svg"))
+
+            figs.append(fig)
+
+        # del figs[idx_of_bg_color]
         # assuming 0 is the background- elaborate in next comment
-        base_figure = sg.fromfile(os.path.join(d, '1.svg'))
-        figs = [sg.fromfile(file_path) for file_path in file_paths]
+        base_figure = figs[0]
         # the [2:] is an attempt to get rid of the trace of the background color; maybe there is a better way to do it
         # like letting the user select what it is, for now ill assume its the dominant color
-        plots = [fig.getroot() for fig in figs[2:]]
+        plots = [fig.getroot() for fig in figs[1:]]
 
         base_figure.append(plots)
         base_figure.save("readied_svg.svg")
-
-
-
 
 
 def get_color_mask_from_img(img: list[numpy.ndarray], mask_color_lab: numpy.ndarray) -> list[numpy.ndarray]:
