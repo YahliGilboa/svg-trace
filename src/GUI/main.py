@@ -1,10 +1,16 @@
 import sys
+
+import numpy as np
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                                QLabel, QPushButton, QFileDialog, QScrollArea, QFrame, QListWidget, 
                                QListWidgetItem, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem)
 from PySide6.QtGui import QPixmap, QImage, QColor, QPainter, QPen, QCursor
 from PySide6.QtCore import Qt, QPoint, QSize, Signal, QObject
 from color_model import ColorModel
+from PIL import Image, ImageFile
+
+from src.calculate_dominant_colors import calculate_main_image_colors
+
 
 class ColorItemWidget(QWidget):
     """Custom widget for displaying a color in the list with exclude and delete buttons."""
@@ -120,7 +126,7 @@ class ColorPickerApp(QMainWindow):
         self.setWindowTitle("PySide6 Image Color Picker (with Exclusion)")
         self.resize(1100, 750)
         
-        self.model = ColorModel()
+        self.color_model = ColorModel()
         self.init_ui()
         self.refresh_color_list()
 
@@ -182,32 +188,38 @@ class ColorPickerApp(QMainWindow):
         file_path, _ = QFileDialog.getOpenFileName(self, "Open Image", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)")
         if file_path:
             pixmap = QPixmap(file_path)
+
+            # TODO: this only works with PNGS at it seems. need fix.
+            self.np_array_image = np.array(Image.open(file_path).convert('RGB'))
             if not pixmap.isNull():
                 self.image_label.set_image(pixmap)
+
+        self.clear_colors()
+        self.__set_dominant_colors()
 
     def update_magnifier(self, pos):
         if self.image_label.pixmap():
             self.magnifier.update_view(pos, self.image_label.pixmap())
 
     def add_color(self, r, g, b):
-        self.model.add_color(r, g, b)
+        self.color_model.add_color(r, g, b)
         self.refresh_color_list()
 
     def toggle_exclude(self, index):
-        self.model.toggle_exclude(index)
+        self.color_model.toggle_exclude(index)
         self.refresh_color_list()
 
     def remove_color(self, index):
-        self.model.remove_color(index)
+        self.color_model.remove_color(index)
         self.refresh_color_list()
 
     def clear_colors(self):
-        self.model.clear()
+        self.color_model.clear()
         self.refresh_color_list()
 
     def refresh_color_list(self):
         self.color_list_widget.clear()
-        for i, color_data in enumerate(self.model.get_colors()):
+        for i, color_data in enumerate(self.color_model.get_colors()):
             item = QListWidgetItem(self.color_list_widget)
             widget = ColorItemWidget(i, color_data)
             widget.delete_requested.connect(self.remove_color)
@@ -217,7 +229,13 @@ class ColorPickerApp(QMainWindow):
             self.color_list_widget.setItemWidget(item, widget)
 
     def export_as_svg(self):
+        """Unimplemented export logic."""
+        pass
 
+    def __set_dominant_colors(self):
+        colors = calculate_main_image_colors(self.np_array_image,colors_n=2)
+        for RGB in list(map(tuple,colors)):
+            self.add_color(*RGB)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
