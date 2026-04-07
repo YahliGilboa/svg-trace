@@ -5,7 +5,7 @@ import tempfile
 import numpy
 import numpy as np
 import svgutils.transform as sg
-from PIL import Image, ImageFile
+from PIL import Image
 from skimage.filters import median
 from skimage.morphology import disk
 
@@ -19,7 +19,7 @@ from src.calculate_dominant_colors import calculate_main_image_colors
 ORIGINAL_COLOR_OF_SVG = "#000000"
 
 
-def convert_img_to_svg(img_np_array: np.array, color_pallete: np.array,save_file_path:str):
+def convert_img_to_svg(img_np_array: np.array, color_pallete: np.array, save_file_path: str):
     # here get additional colors from user and append them
     # additional_palette = np.empty(shape=(0, 3), dtype=int)
     # additional_palette = np.append(additional_palette, [[254, 216, 107], [122, 54, 15], [75, 22, 16]], axis=0)
@@ -27,7 +27,7 @@ def convert_img_to_svg(img_np_array: np.array, color_pallete: np.array,save_file
     print("Main colors (RGB):", color_pallete)
 
     image_coupled_with_primary_colors = img_np_array[:, :, np.newaxis, :] - color_pallete[np.newaxis,
-                                                                               np.newaxis, :, :]
+                                                                            np.newaxis, :, :]
     diffs = np.sqrt(np.sum(np.square(image_coupled_with_primary_colors), axis=3))
     min_diffs = np.argmin(diffs, axis=2)
 
@@ -43,7 +43,7 @@ def convert_img_to_svg(img_np_array: np.array, color_pallete: np.array,save_file
 
             subprocess.run(
                 ["potrace", f"{temp_folder_file_path}.bmp", "-s", "-i", "-o", f"{temp_folder_file_path}.svg"])
-            # subprocess.run(["potrace", f"{temp_folder_file_path}.bmp", "-s", "-i", "-o", f"bro{i}.svg"])
+            subprocess.run(["potrace", f"{temp_folder_file_path}.bmp", "-s", "-i", "-o", f"bro{i}.svg"])
 
             with open(f"{temp_folder_file_path}.svg", 'r') as f:
                 content = f.read()
@@ -56,7 +56,6 @@ def convert_img_to_svg(img_np_array: np.array, color_pallete: np.array,save_file
             fig = sg.fromfile(os.path.join(d, f"{temp_folder_file_path}.svg"))
 
             figs.append(fig)
-
 
         # assuming 0 is the background- elaborate in next comment
         base_figure = figs[0]
